@@ -357,7 +357,9 @@
         let cameraSelect = document.getElementById("camera-select");
         let currentCameraIndex = 0;
         let availableCameras = [];
-
+        document.getElementById("retake-btn").addEventListener("click", retakePhoto);
+// Add event listener for the capture button
+document.getElementById("capture-btn").addEventListener("click", captureImage);
         // Predefined data
         const predefinedBanks = ["State Bank of India", "Bank of Baroda", "Punjab National Bank", "HDFC Bank", "ICICI Bank"];
         const predefinedBranches = ["SHIRODA", "SEOLIM", "ALDONA", "AGARWADA", "MAPUSA", "PONDA", "MARGAO", "PANAJI"];
