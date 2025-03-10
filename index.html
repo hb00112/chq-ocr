@@ -531,39 +531,88 @@ switchCameraBtn.addEventListener('click', switchCamera);
         }
 
         // Process the captured image with OCR
-        async function processImage(imageDataURL) {
-            try {
-                // Set progress text
-                progressText.textContent = "Initializing OCR...";
-                
-                // Perform OCR on the image
-                const result = await worker.recognize(imageDataURL);
-                console.log("OCR Result:", result);
-                
-                // Extract relevant information
-                const extractedText = result.data.text;
-                console.log("Extracted Text:", extractedText);
-                
-                // Parse the extracted text
-                const parsedData = parseExtractedText(extractedText);
-                console.log("Parsed Data:", parsedData);
-                
-                // Display suggestions
-                displaySuggestions(extractedText, parsedData);
-                
-                // Populate form fields with extracted data
-                populateReviewForm(parsedData);
-                
-                // Hide loading and show review form
-                loadingScan.style.display = "none";
-                reviewContainer.style.display = "block";
-                
-            } catch (error) {
-                console.error("OCR Error:", error);
-                progressText.textContent = "Error processing image. Please try again.";
-                loadingScan.style.display = "none";
-            }
-        }
+       // Function to preprocess the image for better OCR accuracy
+       async function processImage(imageDataURL) {
+    try {
+        // Preprocess the image
+        const processedImageDataURL = await preprocessImage(imageDataURL);
+
+        // Extract text from specific regions
+        const extractedData = await extractTextFromRegions(processedImageDataURL);
+
+        // Parse the extracted text
+        const parsedData = parseExtractedText(extractedData);
+
+        // Display suggestions
+        displaySuggestions(extractedData, parsedData);
+
+        // Populate form fields with extracted data
+        populateReviewForm(parsedData);
+
+        // Hide loading and show review form
+        loadingScan.style.display = "none";
+        reviewContainer.style.display = "block";
+    } catch (error) {
+        console.error("OCR Error:", error);
+        progressText.textContent = "Error processing image. Please try again.";
+        loadingScan.style.display = "none";
+    }
+}
+// Function to extract text from specific regions of the cheque
+async function extractTextFromRegions(imageDataURL) {
+    const img = new Image();
+    img.src = imageDataURL;
+
+    await new Promise((resolve) => (img.onload = resolve));
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    // Set canvas dimensions
+    canvas.width = img.width;
+    canvas.height = img.height;
+
+    // Draw the image on the canvas
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    // Define regions of interest (ROI) for Indian cheques
+    const regions = {
+        bankName: { x: 0, y: 0, width: canvas.width * 0.5, height: canvas.height * 0.1 }, // Top-left
+        branch: { x: 0, y: canvas.height * 0.1, width: canvas.width * 0.5, height: canvas.height * 0.1 }, // Below bank name
+        chqNo: { x: canvas.width * 0.7, y: 0, width: canvas.width * 0.3, height: canvas.height * 0.1 }, // Top-right
+        date: { x: canvas.width * 0.7, y: canvas.height * 0.1, width: canvas.width * 0.3, height: canvas.height * 0.1 }, // Near cheque number
+        amount: { x: 0, y: canvas.height * 0.5, width: canvas.width * 0.5, height: canvas.height * 0.2 }, // Center-left
+        partyName: { x: 0, y: canvas.height * 0.7, width: canvas.width * 0.5, height: canvas.height * 0.2 }, // Bottom-left
+    };
+
+    const extractedData = {};
+
+    // Extract text from each region
+    for (const [key, region] of Object.entries(regions)) {
+        const regionCanvas = document.createElement("canvas");
+        const regionCtx = regionCanvas.getContext("2d");
+
+        // Set region canvas dimensions
+        regionCanvas.width = region.width;
+        regionCanvas.height = region.height;
+
+        // Draw the region on the canvas
+        regionCtx.drawImage(
+            canvas,
+            region.x, region.y, region.width, region.height, // Source region
+            0, 0, region.width, region.height // Destination region
+        );
+
+        // Convert the region to a data URL
+        const regionImageDataURL = regionCanvas.toDataURL("image/png");
+
+        // Perform OCR on the region
+        const result = await worker.recognize(regionImageDataURL);
+        extractedData[key] = result.data.text.trim();
+    }
+
+    return extractedData;
+}
 
         // Function to display extracted text with suggestions
         function displaySuggestions(rawText, parsedData) {
@@ -601,79 +650,43 @@ switchCameraBtn.addEventListener('click', switchCamera);
         }
 
         // Function to parse extracted text into cheque fields
-        function parseExtractedText(text) {
-            // Initialize parsed data
-            const parsedData = {
-                chqDate: '',
-                chqNo: '',
-                bankName: '',
-                branch: '',
-                amount: '',
-                partyName: '',
-                billNo: ''
-            };
-            
-            // Parse date (format: DD/MM/YYYY or DD-MM-YYYY)
-            const dateRegex = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/g;
-            const dateMatches = [...text.matchAll(dateRegex)];
-            if (dateMatches.length > 0) {
-                const match = dateMatches[0];
-                let day = match[1].padStart(2, '0');
-                let month = match[2].padStart(2, '0');
-                let year = match[3];
-                if (year.length === 2) {
-                    year = '20' + year;
-                }
-                parsedData.chqDate = `${year}-${month}-${day}`;
-            }
-            
-            // Try to find cheque number (usually 6-8 digits)
-            const chqNoRegex = /\b(\d{6,8})\b/g;
-            const chqNoMatches = [...text.matchAll(chqNoRegex)];
-            if (chqNoMatches.length > 0) {
-                parsedData.chqNo = chqNoMatches[0][1];
-            }
-            
-            // Try to find bank name
-            for (const bank of predefinedBanks) {
-                if (text.toLowerCase().includes(bank.toLowerCase())) {
-                    parsedData.bankName = bank;
-                    break;
-                }
-            }
-            
-            // Try to find branch
-            for (const branch of predefinedBranches) {
-                if (text.toLowerCase().includes(branch.toLowerCase())) {
-                    parsedData.branch = branch;
-                    break;
-                }
-            }
-            
-            // Try to find amount (₹ or Rs. followed by numbers)
-            const amountRegex = /(?:₹|Rs\.?)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i;
-            const amountMatch = text.match(amountRegex);
-            if (amountMatch) {
-                parsedData.amount = amountMatch[1].replace(/,/g, '');
-            }
-            
-            // Try to find party name
-            for (const party of predefinedParties) {
-                if (text.toLowerCase().includes(party.split(' - ')[0].toLowerCase())) {
-                    parsedData.partyName = party;
-                    break;
-                }
-            }
-            
-            // Try to extract a bill number (assuming format like "BILL#12345" or "BILL NO. 12345")
-            const billRegex = /(?:bill\s*(?:#|no\.?|number)\s*)?(\w{1,5}\d{3,5})/i;
-            const billMatch = text.match(billRegex);
-            if (billMatch) {
-                parsedData.billNo = billMatch[1];
-            }
-            
-            return parsedData;
-        }
+      // Function to parse extracted text into cheque fields
+function parseExtractedText(extractedData) {
+    const parsedData = {
+        bankName: "",
+        branch: "",
+        chqNo: "",
+        date: "",
+        amount: "",
+        partyName: "",
+    };
+
+    // Parse bank name
+    parsedData.bankName = extractedData.bankName.split("\n")[0].trim();
+
+    // Parse branch
+    parsedData.branch = extractedData.branch.split("\n")[0].trim();
+
+    // Parse cheque number (look for 6-8 digits)
+    const chqNoMatch = extractedData.chqNo.match(/\b\d{6,8}\b/);
+    parsedData.chqNo = chqNoMatch ? chqNoMatch[0] : "";
+
+    // Parse date (look for DD/MM/YYYY or DD-MM-YYYY)
+    const dateMatch = extractedData.date.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if (dateMatch) {
+        const [_, day, month, year] = dateMatch;
+        parsedData.date = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+
+    // Parse amount (look for ₹ or Rs. followed by numbers)
+    const amountMatch = extractedData.amount.match(/(?:₹|Rs\.?)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i);
+    parsedData.amount = amountMatch ? amountMatch[1].replace(/,/g, "") : "";
+
+    // Parse party name (first line of the partyName region)
+    parsedData.partyName = extractedData.partyName.split("\n")[0].trim();
+
+    return parsedData;
+}
 
         // Populate the review form with extracted data
         function populateReviewForm(data) {
