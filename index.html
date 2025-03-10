@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Bank Slip Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/2.1.5/tesseract.min.js"></script>
+    <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+        }
+        .scan-modal-content {
+            max-width: 700px;
+            overflow-y: auto;
+            max-height: 80vh;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        form {
+            display: grid;
+            gap: 10px;
+        }
+        label {
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .error {
+            color: red;
+            display: none;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+        #video {
+            width: 100%;
+            border: 2px solid #45a049;
+            border-radius: 4px;
+        }
+        #canvas {
+            display: none;
+        }
+        #preview-container {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+        #preview-img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+        }
+        .scanning-progress {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .progress-bar-fill {
+            height: 20px;
+            background-color: #4CAF50;
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .flex-container {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+        .review-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .centered {
+            text-align: center;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .loading:after {
+            content: " .";
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: " ."; }
+            40% { content: " .."; }
+            60% { content: " ..."; }
+            80%, 100% { content: " ...."; }
+        }
+        .suggestions {
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        .highlight {
+            background-color: #ffff99;
+        }
+        .camera-controls {
+            display: flex;
+            justify-content: center;
+            margin: 10px 0;
+        }
+        .camera-btn {
+            margin: 0 5px;
+        }
+        .scan-options {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+        #camera-select {
+            margin-left: 10px;
+            width: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Advanced Bank Slip Generator</h1>
+        <div class="flex-container">
+            <button onclick="openModal()">Add CHQ Manually</button>
+            <button onclick="openScanModal()" style="background-color: #2196F3;">Scan CHQ</button>
+            <button onclick="downloadXLS()">Download XLS</button>
+        </div>
+        <table id="chequeTable">
+            <thead>
+                <tr>
+                    <th>S.R</th>
+                    <th>CHQ DATE</th>
+                    <th>CHQ NO</th>
+                    <th>BANK NAME</th>
+                    <th>BRANCH</th>
+                    <th>AMOUNT</th>
+                    <th>PARTYNAME</th>
+                    <th>BILL NO</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- Manual Entry Modal -->
+    <div id="chequeModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>Add Cheque Details</h2>
+            <form id="chequeForm">
+                <label for="chqDate">CHQ DATE:</label>
+                <input type="date" id="chqDate" required>
+
+                <label for="chqNo">CHQ NO:</label>
+                <input type="text" id="chqNo" required>
+
+                <label for="bankName">BANK NAME:</label>
+                <input type="text" id="bankName" list="bankNameList" required>
+                <datalist id="bankNameList"></datalist>
+
+                <label for="branch">BRANCH:</label>
+                <input type="text" id="branch" list="branchList" required>
+                <datalist id="branchList"></datalist>
+
+                <label for="amount">AMOUNT:</label>
+                <input type="number" id="amount" step="0.01" required>
+
+                <label for="partyName">PARTYNAME:</label>
+                <input type="text" id="partyName" list="partyNameList" required>
+                <datalist id="partyNameList"></datalist>
+                <div id="partyNameError" class="error">Party name must be in the format "PARTYNAME - PLACE"</div>
+
+                <label for="billNo">BILL NO:</label>
+                <input type="text" id="billNo" required>
+
+                <button type="submit">Save CHQ</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scan Cheque Modal -->
+    <div id="scanModal" class="modal">
+        <div class="modal-content scan-modal-content">
+            <span class="close" onclick="closeScanModal()">&times;</span>
+            <h2>Scan Cheque</h2>
+            
+            <div class="scan-options">
+                <button id="switch-camera-btn" class="camera-btn">Switch Camera</button>
+                <select id="camera-select"></select>
+            </div>
+            
+            <div id="video-container">
+                <video id="video" autoplay playsinline></video>
+                <canvas id="canvas"></canvas>
+            </div>
+            
+            <div class="camera-controls">
+                <button id="capture-btn" class="camera-btn">Capture</button>
+                <button id="retake-btn" class="camera-btn" style="display: none;">Retake</button>
+            </div>
+            
+            <div id="preview-container">
+                <img id="preview-img">
+                <div class="scanning-progress">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-bar-fill"></div>
+                    </div>
+                    <div id="progress-text">Preparing to scan...</div>
+                </div>
+            </div>
+            
+            <div id="loading-scan" class="loading">Processing your cheque</div>
+            
+            <div id="review-container" style="display: none;">
+                <h3>Please review and confirm the extracted information:</h3>
+                <div class="suggestions" id="suggestions-container"></div>
+                <div class="review-section">
+                    <div>
+                        <label for="scan-chqDate">CHQ DATE:</label>
+                        <input type="date" id="scan-chqDate" required>
+                    </div>
+                    <div>
+                        <label for="scan-chqNo">CHQ NO:</label>
+                        <input type="text" id="scan-chqNo" required>
+                    </div>
+                    <div>
+                        <label for="scan-bankName">BANK NAME:</label>
+                        <input type="text" id="scan-bankName" list="bankNameList" required>
+                    </div>
+                    <div>
+                        <label for="scan-branch">BRANCH:</label>
+                        <input type="text" id="scan-branch" list="branchList" required>
+                    </div>
+                    <div>
+                        <label for="scan-amount">AMOUNT:</label>
+                        <input type="number" id="scan-amount" step="0.01" required>
+                    </div>
+                    <div>
+                        <label for="scan-partyName">PARTYNAME:</label>
+                        <input type="text" id="scan-partyName" list="partyNameList" required>
+                    </div>
+                    <div>
+                        <label for="scan-billNo">BILL NO:</label>
+                        <input type="text" id="scan-billNo" required>
+                    </div>
+                </div>
+                <div class="centered" style="margin-top: 20px;">
+                    <button id="save-scan-btn">Save Cheque Information</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let cheques = [];
+        const modal = document.getElementById("chequeModal");
+        const scanModal = document.getElementById("scanModal");
+        const form = document.getElementById("chequeForm");
+        const table = document.getElementById("chequeTable").getElementsByTagName('tbody')[0];
+        const partyNameError = document.getElementById("partyNameError");
+        let videoStream = null;
+        let videoElement = document.getElementById("video");
+        let canvasElement = document.getElementById("canvas");
+        let canvasContext = canvasElement.getContext("2d");
+        let captureBtn = document.getElementById("capture-btn");
+        let retakeBtn = document.getElementById("retake-btn");
+        let saveScanBtn = document.getElementById("save-scan-btn");
+        let previewContainer = document.getElementById("preview-container");
+        let previewImg = document.getElementById("preview-img");
+        let progressFill = document.getElementById("progress-fill");
+        let progressText = document.getElementById("progress-text");
+        let reviewContainer = document.getElementById("review-container");
+        let loadingScan = document.getElementById("loading-scan");
+        let switchCameraBtn = document.getElementById("switch-camera-btn");
+        let cameraSelect = document.getElementById("camera-select");
+        let currentCameraIndex = 0;
+        let availableCameras = [];
+
+        // Predefined data
+        const predefinedBanks = ["State Bank of India", "Bank of Baroda", "Punjab National Bank", "HDFC Bank", "ICICI Bank"];
+        const predefinedBranches = ["SHIRODA", "SEOLIM", "ALDONA", "AGARWADA", "MAPUSA", "PONDA", "MARGAO", "PANAJI"];
+        const predefinedParties = [
+            "24 CARAT GARMENTS - SHIRODA",
+            "46 SPORTS CORNER - SEOLIM",
+            "A BOUTIQUE - ALDONA",
+            "FASHION TRENDS - MAPUSA",
+            "ELITE CLOTHIERS - PONDA",
+            "MODERN STYLES - PANAJI"
+        ];
+
+        // Initialize Tesseract with language data
+        const worker = Tesseract.createWorker({
+            logger: m => {
+                console.log(m);
+                updateProgress(m);
+            }
+        });
+
+        // Initialize worker
+        async function initializeWorker() {
+            await worker.load();
+            await worker.loadLanguage('eng');
+            await worker.initialize('eng');
+            console.log("Tesseract worker initialized");
+        }
+
+        // Call initialization
+        initializeWorker();
+
+        // Function to enumerate available cameras
+        async function startCamera() {
+    // Stop any existing video stream
+    if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+    }
+
+    try {
+        // Request camera access
+        videoStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                deviceId: availableCameras.length > 0 ? { exact: availableCameras[currentCameraIndex].deviceId } : undefined,
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: "environment" // Prefer rear camera on mobile
+            }
+        });
+
+        // Set the video source to the camera stream
+        videoElement.srcObject = videoStream;
+
+        // Update camera select value
+        cameraSelect.value = currentCameraIndex;
+
+        // Play the video
+        await videoElement.play();
+
+        console.log("Camera access granted and video started.");
+    } catch (error) {
+        console.error("Error accessing camera:", error);
+
+        // Handle specific permission errors
+        if (error.name === "NotAllowedError") {
+            alert("Camera access was denied. Please allow camera access to use this feature.");
+        } else if (error.name === "NotFoundError") {
+            alert("No camera found. Please ensure your device has a camera.");
+        } else {
+            alert("Failed to access camera. Please check permissions and try again.");
+        }
+    }
+}
+
+// Function to enumerate available cameras
+async function getCameras() {
+    try {
+        // Enumerate all media devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        availableCameras = devices.filter(device => device.kind === 'videoinput');
+
+        // Populate camera select dropdown
+        cameraSelect.innerHTML = '';
+        availableCameras.forEach((camera, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.text = camera.label || `Camera ${index + 1}`;
+            cameraSelect.appendChild(option);
+        });
+
+        cameraSelect.value = currentCameraIndex;
+
+        // Show/hide switch camera button based on number of cameras
+        if (availableCameras.length <= 1) {
+            switchCameraBtn.style.display = 'none';
+        } else {
+            switchCameraBtn.style.display = 'inline-block';
+        }
+
+        console.log("Available cameras:", availableCameras);
+    } catch (error) {
+        console.error("Error getting cameras:", error);
+        alert("Failed to enumerate cameras. Please check permissions and try again.");
+    }
+}
+
+function switchCamera() {
+    if (availableCameras.length > 1) {
+        currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+        startCamera();
+    }
+}
+
+// Event listener for camera select dropdown
+cameraSelect.addEventListener('change', function(event) {
+    currentCameraIndex = parseInt(event.target.value);
+    startCamera();
+});
+
+// Event listener for switch camera button
+switchCameraBtn.addEventListener('click', switchCamera);
+
+        // Function to capture image
+        function captureImage() {
+            // Set canvas dimensions to match video
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            
+            // Draw video frame to canvas
+            canvasContext.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+            
+            // Convert canvas to image URL
+            const imageDataURL = canvasElement.toDataURL('image/png');
+            
+            // Display the captured image
+            previewImg.src = imageDataURL;
+            previewContainer.style.display = "block";
+            captureBtn.style.display = "none";
+            retakeBtn.style.display = "inline-block";
+            
+            // Start OCR process
+            processImage(imageDataURL);
+        }
+
+        // Function to retake photo
+        function retakePhoto() {
+            previewContainer.style.display = "none";
+            captureBtn.style.display = "inline-block";
+            retakeBtn.style.display = "none";
+            reviewContainer.style.display = "none";
+            loadingScan.style.display = "none";
+            
+            // Reset progress bar
+            progressFill.style.width = "0%";
+            progressText.textContent = "Preparing to scan...";
+        }
+
+        // Update progress bar based on Tesseract progress
+        function updateProgress(message) {
+            if (message.status === 'recognizing text') {
+                const progress = Math.round(message.progress * 100);
+                progressFill.style.width = `${progress}%`;
+                progressText.textContent = `Processing: ${progress}%`;
+                
+                if (progress === 100) {
+                    progressText.textContent = "Processing complete!";
+                    loadingScan.style.display = "block";
+                }
+            }
+        }
+
+        // Process the captured image with OCR
+        async function processImage(imageDataURL) {
+            try {
+                // Set progress text
+                progressText.textContent = "Initializing OCR...";
+                
+                // Perform OCR on the image
+                const result = await worker.recognize(imageDataURL);
+                console.log("OCR Result:", result);
+                
+                // Extract relevant information
+                const extractedText = result.data.text;
+                console.log("Extracted Text:", extractedText);
+                
+                // Parse the extracted text
+                const parsedData = parseExtractedText(extractedText);
+                console.log("Parsed Data:", parsedData);
+                
+                // Display suggestions
+                displaySuggestions(extractedText, parsedData);
+                
+                // Populate form fields with extracted data
+                populateReviewForm(parsedData);
+                
+                // Hide loading and show review form
+                loadingScan.style.display = "none";
+                reviewContainer.style.display = "block";
+                
+            } catch (error) {
+                console.error("OCR Error:", error);
+                progressText.textContent = "Error processing image. Please try again.";
+                loadingScan.style.display = "none";
+            }
+        }
+
+        // Function to display extracted text with suggestions
+        function displaySuggestions(rawText, parsedData) {
+            const container = document.getElementById("suggestions-container");
+            container.innerHTML = '';
+            
+            // Format detected fields
+            const highlightedText = highlightDetectedFields(rawText, parsedData);
+            container.innerHTML = `
+                <p>OCR detected the following text:</p>
+                <div style="font-family: monospace; white-space: pre-wrap;">${highlightedText}</div>
+            `;
+        }
+
+        // Highlight detected fields in raw text
+        function highlightDetectedFields(text, parsedData) {
+            let highlightedText = text;
+            
+            // Highlight each detected field
+            for (const [key, value] of Object.entries(parsedData)) {
+                if (value && typeof value === 'string') {
+                    // Replace the value with highlighted version
+                    // Use a regex to match the value case insensitive
+                    const regex = new RegExp(`(${escapeRegExp(value)})`, 'gi');
+                    highlightedText = highlightedText.replace(regex, '<span class="highlight">$1</span>');
+                }
+            }
+            
+            return highlightedText;
+        }
+
+        // Helper to escape regex special characters
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // Function to parse extracted text into cheque fields
+        function parseExtractedText(text) {
+            // Initialize parsed data
+            const parsedData = {
+                chqDate: '',
+                chqNo: '',
+                bankName: '',
+                branch: '',
+                amount: '',
+                partyName: '',
+                billNo: ''
+            };
+            
+            // Parse date (format: DD/MM/YYYY or DD-MM-YYYY)
+            const dateRegex = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/g;
+            const dateMatches = [...text.matchAll(dateRegex)];
+            if (dateMatches.length > 0) {
+                const match = dateMatches[0];
+                let day = match[1].padStart(2, '0');
+                let month = match[2].padStart(2, '0');
+                let year = match[3];
+                if (year.length === 2) {
+                    year = '20' + year;
+                }
+                parsedData.chqDate = `${year}-${month}-${day}`;
+            }
+            
+            // Try to find cheque number (usually 6-8 digits)
+            const chqNoRegex = /\b(\d{6,8})\b/g;
+            const chqNoMatches = [...text.matchAll(chqNoRegex)];
+            if (chqNoMatches.length > 0) {
+                parsedData.chqNo = chqNoMatches[0][1];
+            }
+            
+            // Try to find bank name
+            for (const bank of predefinedBanks) {
+                if (text.toLowerCase().includes(bank.toLowerCase())) {
+                    parsedData.bankName = bank;
+                    break;
+                }
+            }
+            
+            // Try to find branch
+            for (const branch of predefinedBranches) {
+                if (text.toLowerCase().includes(branch.toLowerCase())) {
+                    parsedData.branch = branch;
+                    break;
+                }
+            }
+            
+            // Try to find amount (₹ or Rs. followed by numbers)
+            const amountRegex = /(?:₹|Rs\.?)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i;
+            const amountMatch = text.match(amountRegex);
+            if (amountMatch) {
+                parsedData.amount = amountMatch[1].replace(/,/g, '');
+            }
+            
+            // Try to find party name
+            for (const party of predefinedParties) {
+                if (text.toLowerCase().includes(party.split(' - ')[0].toLowerCase())) {
+                    parsedData.partyName = party;
+                    break;
+                }
+            }
+            
+            // Try to extract a bill number (assuming format like "BILL#12345" or "BILL NO. 12345")
+            const billRegex = /(?:bill\s*(?:#|no\.?|number)\s*)?(\w{1,5}\d{3,5})/i;
+            const billMatch = text.match(billRegex);
+            if (billMatch) {
+                parsedData.billNo = billMatch[1];
+            }
+            
+            return parsedData;
+        }
+
+        // Populate the review form with extracted data
+        function populateReviewForm(data) {
+            document.getElementById("scan-chqDate").value = data.chqDate || '';
+            document.getElementById("scan-chqNo").value = data.chqNo || '';
+            document.getElementById("scan-bankName").value = data.bankName || '';
+            document.getElementById("scan-branch").value = data.branch || '';
+            document.getElementById("scan-amount").value = data.amount || '';
+            document.getElementById("scan-partyName").value = data.partyName || '';
+            document.getElementById("scan-billNo").value = data.billNo || '';
+        }
+
+        // Save cheque information from scanned data
+        function saveScanData() {
+            const partyName = document.getElementById("scan-partyName").value;
+            if (!partyName.includes('-')) {
+                alert("Party name must be in the format 'PARTYNAME - PLACE'");
+                return;
+            }
+            
+            const cheque = {
+                chqDate: document.getElementById("scan-chqDate").value,
+                chqNo: document.getElementById("scan-chqNo").value,
+                bankName: document.getElementById("scan-bankName").value,
+                branch: document.getElementById("scan-branch").value,
+                amount: document.getElementById("scan-amount").value,
+                partyName: partyName,
+                billNo: document.getElementById("scan-billNo").value
+            };
+            
+            addCheque(cheque);
+            closeScanModal();
+        }
+
+        // Event handlers
+        function openModal() {
+            modal.style.display = "block";
+            // Set today's date as default
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById("chqDate").value = today;
+        }
+
+        function closeModal() {
+            modal.style.display = "none";
+            form.reset();
+            partyNameError.style.display = 'none';
+        }
+
+        async function openScanModal() {
+    scanModal.style.display = "block";
+    retakePhoto(); // Reset scan interface
+
+    // Initialize camera dropdown
+    await getCameras();
+
+    // Start the camera
+    await startCamera();
+}
+
+// Function to close the scan modal and stop the camera
+function closeScanModal() {
+    scanModal.style.display = "none";
+    if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+        videoStream = null;
+    }
+}
+
+
+        function addCheque(cheque) {
+            cheques.push(cheque);
+            updateTable();
+            saveToLocalStorage(cheque);
+        }
+
+        function removeCheque(index) {
+            cheques.splice(index, 1);
+            updateTable();
+            // Update local storage to reflect current cheques list
+            localStorage.setItem('cheques', JSON.stringify(cheques));
+        }
+
+        function updateTable() {
+            table.innerHTML = "";
+            cheques.forEach((cheque, index) => {
+                const row = table.insertRow();
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${cheque.chqDate}</td>
+                    <td>${cheque.chqNo}</td>
+                    <td>${cheque.bankName}</td>
+                    <td>${cheque.branch}</td>
+                    <td>${cheque.amount}</td>
+                    <td>${cheque.partyName}</td>
+                    <td>${cheque.billNo}</td>
+                    <td><button onclick="removeCheque(${index})" style="background-color: #f44336; margin: 0;">✕</button></td>
+                `;
+            });
+        }
+
+        function saveToLocalStorage(cheque) {
+            // Add to cheques list in local storage
+            localStorage.setItem('cheques', JSON.stringify(cheques));
+            
+            // Add to autocomplete lists
+            ['bankName', 'branch', 'partyName'].forEach(field => {
+                let values = JSON.parse(localStorage.getItem(field) || '[]');
+                if (!values.includes(cheque[field])) {
+                    values.push(cheque[field]);
+                    localStorage.setItem(field, JSON.stringify(values));
+                }
+                updateDatalist(field);
+            });
+        }
+
+        function updateDatalist(field) {
+            const datalist = document.getElementById(`${field}List`);
+            let values = JSON.parse(localStorage.getItem(field) || '[]');
+            
+            if (field === 'bankName') {
+                values = [...new Set([...predefinedBanks, ...values])];
+            } else if (field === 'branch') {
+                values = [...new Set([...predefinedBranches, ...values])];
+            } else if (field === 'partyName') {
+                values = [...new Set([...predefinedParties, ...values])];
+            }
+
+            datalist.innerHTML = values.map(value => `<option value="${value}">`).join('');
+        }
+
+        function downloadXLS() {
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(cheques);
+
+            // Set column widths
+            const colWidths = [10, 12, 12, 15, 12, 12, 20, 12];
+            ws['!cols'] = colWidths.map(w => ({ width: w }));
+
+            // Helper function to get cell address
+            const getCellAddress = (c, r) => XLSX.utils.encode_cell({c: c, r: r});
+
+            // Set styles for all cells
+            for (let r = 0; r < cheques.length + 4; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const cellAddress = getCellAddress(c, r);
+                    if (!ws[cellAddress]) ws[cellAddress] = {};
+                    ws[cellAddress].s = {
+                        font: { color: { rgb: "000080" }, name: "Arial" },
+                        border: {
+                            top: { style: "thin", color: { rgb: "000080" } },
+                            bottom: { style: "thin", color: { rgb: "000080" } },
+                            left: { style: "thin", color: { rgb: "000080" } },
+                            right: { style: "thin", color: { rgb: "000080" } }
+                        }
+                    };
+                }
+            }
+
+            // Merge cells and add headers
+            const todayDate = new Date().toLocaleDateString();
+            const mergeAndStyle = (start, end, value, bold = true, align = "left") => {
+                XLSX.utils.sheet_add_aoa(ws, [[value]], { origin: start });
+                if (!ws[start]) ws[start] = {};
+                if (!ws[start].s) ws[start].s = {};
+                ws[start].s = { 
+                    ...ws[start].s, 
+                    font: { ...(ws[start].s.font || {}), bold }, 
+                    alignment: { horizontal: align } 
+                };
+                if (start !== end) ws['!merges'] = [...(ws['!merges'] || []), XLSX.utils.decode_range(start + ':' + end)];
+            };
+
+            mergeAndStyle('A1', 'D1', "HREENKAR CREATION");
+            mergeAndStyle('E1', 'H1', "A/C NO : 1567250000107");
+            mergeAndStyle('A2', 'D2', "PUNJAB NATIONAL BANK  MAPUSA");
+            mergeAndStyle('E2', 'H2', `DATE : ${todayDate}`);
+
+            // Add table headers
+            const headers = ['S.R', 'CHQ DATE', 'CHQ NO', 'BANK NAME', 'BRANCH', 'AMOUNT', 'PARTYNAME', 'BILL NO'];
+            XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A3' });
+            for (let i = 0; i < 8; i++) {
+                const cell = getCellAddress(i, 2);
+                if (!ws[cell]) ws[cell] = {};
+                if (!ws[cell].s) ws[cell].s = {};
+                ws[cell].s = { ...ws[cell].s, font: { ...(ws[cell].s.font || {}), bold: true } };
+            }
+
+            // Add cheque data
+            cheques.forEach((cheque, index) => {
+                const rowData = [
+                    index + 1,
+                    cheque.chqDate,
+                    cheque.chqNo,
+                    cheque.bankName,
+                    cheque.branch,
+                    cheque.amount,
+                    cheque.partyName,
+                    cheque.billNo
+                ];
+                XLSX.utils.sheet_add_aoa(ws, [rowData], { origin: `A${index + 4}` });
+            });
+
+            // Calculate total and format it
+            const totalAmount = cheques.reduce((sum, cheque) => sum + parseFloat(cheque.amount), 0);
+            const totalRow = cheques.length + 4;
+            const totalInWords = numberToWords(totalAmount);
+            const totalString = `TOTAL(${cheques.length} CHQ) : ${totalAmount.toFixed(2)} (${totalInWords})`;
+            mergeAndStyle(getCellAddress(0, totalRow), getCellAddress(7, totalRow), 
+                          totalString, true, "left");
+
+            XLSX.utils.book_append_sheet(wb, ws, "Cheques");
+
+            // Generate file name with today's date
+            const fileName = `${formatDate(new Date())}_BANKSLIP.xlsx`;
+            XLSX.writeFile(wb, fileName);
+        }
+
+        // Helper function to convert number to words
+        function numberToWords(num) {
+            const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+            const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+            const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+
+            if (num < 10) return ones[num];
+            if (num < 20) return teens[num - 10];
+            if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '');
+            if (num < 1000) return ones[Math.floor(num / 100)] + ' Hundred' + (num % 100 ? ' and ' + numberToWords(num % 100) : '');
+            if (num < 100000) return numberToWords(Math.floor(num / 1000)) + ' Thousand' + (num % 1000 ? ' ' + numberToWords(num % 1000) : '');
+            return numberToWords(Math.floor(num / 100000)) + ' Lakh' + (num % 100000 ? ' ' + numberToWords(num % 100000) : '');
+        }
+
+        // Helper function to format date as DD-MM-YYYY
+        function formatDate(date) {
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}-${month}-${year}`;
+        }
+
+        form.addEventListener("submit", function(e) {
+            e.preventDefault();
+            const partyName = document.getElementById("partyName").value;
+            if (!partyName.includes('-')) {
+                partyNameError.style.display = 'block';
+                return;
+            }
+            partyNameError.style.display = 'none';
+
+            const cheque = {
+                chqDate: document.getElementById("chqDate").value,
+                chqNo: document.getElementById("chqNo").value,
+                bankName: document.getElementById("bankName").value,
+                branch: document.getElementById("branch").value,
+                amount: document.getElementById("amount").value,
+                partyName: partyName,
+                billNo: document.getElementById("billNo").value
+            };
+            addCheque(cheque);
+            closeModal();
+        });
+
+        // Initialize datalists with predefined data
+        function initializePredefinedData() {
+            ['bankName', 'branch', 'partyName'].forEach(field => {
+                let predefinedValues;
+                if (field === 'bankName') {
+                    predefinedValues = predefinedBanks;
+                } else if (field === 'branch') {
+                    predefinedValues = predefinedBranches;
+                } else if (field === 'partyName') {
+                    predefinedValues = predefinedParties;
+                }
+                localStorage.setItem(field, JSON.stringify(predefinedValues));
+                updateDatalist(field);
+            });
+        }
+
+        // Call initializePredefinedData when the page loads
+        window.onload = initializePredefinedData;
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>
